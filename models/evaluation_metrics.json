@@ -1,0 +1,43 @@
+{
+  "dataset": {
+    "total_samples": 2000,
+    "valid_training_samples": 1800,
+    "train_samples": 1440,
+    "test_samples": 360,
+    "features_used": [
+      "Origin_Warehouse",
+      "Destination",
+      "Carrier",
+      "Distance_miles",
+      "Weight_kg",
+      "Shipment_Month",
+      "Shipment_DayOfWeek"
+    ],
+    "target": "delivery_duration_days"
+  },
+  "baseline": {
+    "name": "Median Duration Baseline",
+    "median_duration_days": 4.0,
+    "median_duration_hours": 96.0,
+    "mae_days": 2.1139,
+    "mae_hours": 50.73,
+    "rmse_days": 3.3595,
+    "rmse_hours": 80.63,
+    "r2": -0.0886
+  },
+  "random_forest": {
+    "name": "RandomForestRegressor Pipeline",
+    "n_estimators": 200,
+    "max_depth": 12,
+    "mae_days": 2.0159,
+    "mae_hours": 48.38,
+    "rmse_days": 3.1052,
+    "rmse_hours": 74.53,
+    "r2": 0.0699
+  },
+  "comparison": {
+    "mae_improvement_hours": 2.35,
+    "rmse_improvement_hours": 6.1,
+    "rf_beats_baseline": true
+  }
+}
