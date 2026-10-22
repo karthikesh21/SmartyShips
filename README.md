@@ -228,8 +228,4 @@ The application provides 5 operational tabs:
 2. **Absence of Real-Time Telematics**: Highway conditions, weather storms, and terminal dwell times are unobserved in the historical dataset; integrating ELD/GPS feeds (e.g. Samsara, Geotab) would improve $R^2$.
 3. **Feature Correlation vs. Causation**: Feature importances indicate empirical association in decision tree splits, not direct causal drivers.
 
----
 
-## License
-
-This project is licensed under the [MIT License](LICENSE). Sourced dataset remains under the attribution terms of its original Kaggle authors.
