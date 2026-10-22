@@ -1215,7 +1215,7 @@ elif active_view == "Model Evaluation & Residuals":
     st.markdown("### Machine Learning Model Performance & Residual Diagnostics")
     st.markdown("""
     Holdout evaluation on 360 shipments (20% test partition, seed=42) comparing the
-    production **Random Forest Pipeline** against the **Median Baseline**.
+    trained **Random Forest Pipeline** against the **Median Baseline**.
     """)
 
     b_m = metrics["baseline"]
@@ -1300,9 +1300,12 @@ elif active_view == "Model Evaluation & Residuals":
 
     st.markdown("""
     <div class="notice-box">
-        <strong>Evaluation Findings:</strong>
-        The Random Forest pipeline achieves an MAE of 48.38 hours versus the baseline median of 50.73 hours (a modest error reduction of 2.35 hours).
-        Without GPS telematics or weather telemetry in the raw dataset, residual variance reflects highway congestion and terminal queuing.
+        <strong>Model Performance & Operational Limitations:</strong>
+        <ul style="margin: 6px 0 0 18px; padding: 0;">
+            <li><strong>Modest Improvement:</strong> The Random Forest pipeline achieves an MAE of 48.38 hours versus the median baseline of 50.73 hours (a modest error reduction of ~2.35 hours across 360 held-out test shipments).</li>
+            <li><strong>Explanatory Power (R² = 0.0699):</strong> The model accounts for approximately 7% of total variance in transit duration, confirming that static pre-departure features cannot reliably capture in-transit anomalies.</li>
+            <li><strong>Estimates, Not Guarantees:</strong> In-transit roadway congestion, driver rest cycles, weather events, and terminal queuing remain unobserved in the source dataset. Outputs should be treated as operational estimates for planning buffers, not guaranteed arrival commitments.</li>
+        </ul>
     </div>
     """, unsafe_allow_html=True)
 

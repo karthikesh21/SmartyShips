@@ -8,7 +8,7 @@
 Freight logistics operations face compounding transit uncertainties across line-haul corridors, cross-dock sortation hubs, and regional carrier handoffs. Inaccurate transit time estimates lead to misallocated warehouse dock labor, missed delivery service level agreements (SLAs), and costly downstream expediting.
 
 SmartyShips is an engineering prototype designed to:
-1. Predict total shipment transit duration from pre-departure attributes.
+1. Provide delivery transit duration estimates from pre-departure attributes.
 2. Calculate estimated arrival timestamps (ETA) standardized in UTC.
 3. Compare forecasted ETAs against contract delivery targets to classify SLA breach risks.
 4. Model stage-by-stage disruption cascades across distinct shipment legs without double-counting.
@@ -18,10 +18,12 @@ SmartyShips is an engineering prototype designed to:
 
 ## 2. Dataset & Quality Audit
 
-### 2.1 Source Data
-The analysis uses the US Logistics Performance Dataset:
-- **Volume**: 2,000 raw shipment records across 11 features.
-- **Attributes**: `Shipment_ID`, `Origin_Warehouse`, `Destination`, `Carrier`, `Shipment_Date`, `Delivery_Date`, `Weight_kg`, `Cost`, `Status`, `Distance_miles`, `Transit_Days`.
+### 2.1 Source Data & Attribution
+The project utilizes the [US Logistics Performance Dataset on Kaggle](https://www.kaggle.com/datasets/shahriarkabir/us-logistics-performance-dataset), published by **Shahriar Kabir**:
+- **Dataset Role**: Used for delivery duration prediction, data hygiene auditing, and regression model evaluation.
+- **Volume**: 2,000 raw shipment records across 11 features: `Shipment_ID`, `Origin_Warehouse`, `Destination`, `Carrier`, `Shipment_Date`, `Delivery_Date`, `Weight_kg`, `Cost`, `Status`, `Distance_miles`, `Transit_Days`.
+- **Data Scope & Provenance Note**: The source dataset contains pre-departure features and calendar-day origin dispatch and delivery dates. It does **not** contain real-time GPS coordinates, weather readings, customs delays, road traffic sensor logs, or intermediate terminal milestone scans. Consequently, the multi-stage shipment breakdowns (*Origin Dispatch*, *Main Line-Haul*, *Transfer Hub*, *Final Delivery*) and disruption propagation timelines are **engineering simulations** constructed to model logistics mechanics, clearly distinguished from historical observations.
+- **Licensing & Terms**: Sourced from public Kaggle contributors for supply chain benchmarking. The authors and contributors of SmartyShips claim no ownership of the underlying dataset, which remains under the terms established by its original author on Kaggle.
 
 ### 2.2 Preprocessing & Data Cleaning
 An exploratory audit identified several anomalies requiring remediation before modeling:
@@ -69,31 +71,50 @@ To prevent data leakage, only attributes available *prior to dispatch* are used:
 
 ---
 
-## 4. Modeling & Experimental Results
+## 4. Model Performance and Limitations
 
-### 4.1 Methodology
-- **Split**: 80% train (1,440 records) and 20% test (360 records), fixed seed (`random_state=42`).
+### 4.1 Evaluation Methodology
+- **Evaluation Split**: 80% train (1,440 records) and 20% test (360 records) using a fixed seed (`random_state=42`).
 - **Baseline**: Median transit duration of the training set ($4.0\text{ days} / 96.0\text{ hours}$).
-- **Production Pipeline**: `RandomForestRegressor` (200 estimators, max depth 12, min samples split 4) combined with a Scikit-Learn `ColumnTransformer`.
+- **Trained Pipeline**: `RandomForestRegressor` (200 estimators, max depth 12, min samples split 4) combined with a Scikit-Learn `ColumnTransformer`.
 
-### 4.2 Test Set Performance
+### 4.2 Measured Test Set Results
+Extracted directly from the evaluation artifact [`models/evaluation_metrics.json`](../models/evaluation_metrics.json):
 
-| Metric | Baseline (Median) | Random Forest Pipeline | Net Improvement |
+| Metric | Median Baseline | RandomForestRegressor Pipeline | Net Improvement |
 | :--- | :---: | :---: | :---: |
-| **Mean Absolute Error (Days)** | 2.114 | **2.016** | **-0.098 days** |
-| **Mean Absolute Error (Hours)** | 50.73 | **48.38** | **-2.35 hours** |
-| **Root Mean Squared Error (Days)** | 3.359 | **3.105** | **-0.254 days** |
-| **Root Mean Squared Error (Hours)** | 80.63 | **74.53** | **-6.10 hours** |
-| **$R^2$ Score** | -0.0886 | **+0.0699** | **+0.1585** |
+| **MAE (Days)** | 2.114 | **2.016** | **-0.098 days** |
+| **MAE (Hours)** | 50.73 | **48.38** | **-2.35 hours** |
+| **RMSE (Days)** | 3.359 | **3.105** | **-0.254 days** |
+| **RMSE (Hours)** | 80.63 | **74.53** | **-6.10 hours** |
+| **$R^2$ Score** | -0.0886 | **+0.0699** | **+0.1585 gain** |
 
-### 4.3 Signed Error Definition & Residual Analysis
+### 4.3 Metric Definitions in Plain English
+- **Mean Absolute Error (MAE)**: Measures the average magnitude of absolute prediction errors. An MAE of 48.38 hours means model duration estimates differ from actual delivery times by approximately 2 days on average.
+- **Root Mean Squared Error (RMSE)**: Calculates the square root of the mean squared errors, heavily penalizing large forecast outliers. At 74.53 hours (versus 80.63 hours for baseline), the Random Forest reduces severe delivery forecast errors.
+- **Coefficient of Determination ($R^2$)**: Represents the percentage of variance in transit duration explained by the input features. The measured $R^2$ of **0.0699** (~7% variance explained) indicates that the static pre-departure features capture only a small fraction of duration variability.
+
+### 4.4 Honest Interpretation & Operational Limitations
+1. **Modest Error Reduction**: The Random Forest pipeline performs modestly better than the central-tendency median baseline, reducing average error by ~2.35 hours across the holdout split.
+2. **Limited Predictive Power ($R^2 = 0.0699$)**: This result is expected given that the dataset lacks live in-transit data. Approximately 93% of transit variance remains unexplained by static pre-departure attributes. The model's improvement is genuine on the test split, but it does **not** constitute evidence of high predictive accuracy.
+3. **Operational Estimates, Not Guarantees**: Model outputs must be interpreted as rough operational guidelines for scheduling buffers, not guaranteed delivery commitments.
+4. **Calendar-Day Resolution**: Historical timestamps are recorded at day granularity, introducing discrete rounding variance.
+5. **Single Random Split**: A single 80/20 random partition does not establish model generalization across future operating quarters or newly introduced carrier corridors.
+
+### 4.5 Proposed Future Improvements (Not Yet Implemented)
+- **Time-Based Validation**: Transitioning from a random split to temporal backtesting (e.g., train on Q1-Q3, evaluate on Q4) to evaluate seasonal drift.
+- **Telematics & GPS Feeds**: Integrating vehicle GPS tracking (e.g., Samsara, Geotab) to incorporate live road speeds and driver rest intervals.
+- **Carrier Milestone EDI**: Ingesting EDI 214 transit milestone messages for intermediate terminal scans.
+- **Weather & Traffic Impedance**: Ingesting real-time NOAA severe weather alerts and highway congestion indices.
+
+---
+
+### 4.6 Signed Error Definition & Residual Analysis
 Evaluation errors and residuals are defined using the consistent signed convention:
 $$\text{prediction\_error\_days} = \text{predicted\_days} - \text{actual\_days}$$
 $$\text{prediction\_error\_hours} = (\text{predicted\_days} - \text{actual\_days}) \times 24.0$$
 - **Negative value**: Underprediction (predicted duration is shorter than actual delivery).
 - **Positive value**: Overprediction (predicted duration is longer than actual delivery).
-
-Given that the source dataset contains day-level dates without real-time GPS telematics or weather telemetry, residual variance naturally reflects unobserved roadway conditions and local distribution queue times. The Random Forest pipeline captures non-linear carrier-route interactions and reduces overall MAE by over 2.3 hours compared to the central tendency baseline.
 
 ---
 
@@ -149,12 +170,11 @@ Aggregating one-hot encoded tree split importances back to root operational vari
 4. **Origin-Destination Corridor (~10-15%)**: Regional infrastructure density and cross-dock hub frequency.
 5. **Dispatch Day / Month (~5%)**: Weekend depot schedules and seasonal shipping volume shifts.
 
-
 ---
 
-## 8. Enterprise Roadmap & Production Integration
+## 8. Enterprise Roadmap & Proposed Integration Work
 
-In an enterprise production deployment, this platform can be integrated with live supply chain systems:
+In future iterations, this platform could be connected to live logistics telemetry systems:
 1. **Telematics & ELD Feeds (Samsara, Geotab)**: Live truck GPS positions, driver hours-of-service, and average speed.
 2. **Carrier EDI Feeds (EDI 214 / API Webhooks)**: Real-time milestone scans (departure scan, arrival at terminal, out for delivery).
 3. **Weather & Traffic Feeds (NOAA, DOT 511)**: Dynamic impedance modeling for severe weather or highway closures.

@@ -11,8 +11,8 @@ Built on the **US Logistics Performance Dataset** (2,000 shipment records).
 Accurate transit time forecasting is critical for modern logistics operations. Delays at early freight milestones often cascade into severe downstream cross-dock congestion and customer SLA penalties.
 
 **SmartyShips** provides:
-- **Transit Duration & ETA Modeling**: Supervised machine learning (`RandomForestRegressor` pipeline) predicting delivery duration from pre-shipment attributes without target leakage.
-- **SLA Breach Risk Classification**: Compares predicted arrival against user-defined contract deadlines into operational risk tiers (`On Time`, `Low Risk`, `Moderate Risk`, `High Risk`).
+- **Transit Duration & ETA Modeling**: Supervised machine learning (`RandomForestRegressor` pipeline) providing duration estimates from pre-shipment attributes without target leakage.
+- **SLA Breach Risk Classification**: Compares estimated arrival times against user-defined contract deadlines into operational risk tiers (`On Time`, `Low Risk`, `Moderate Risk`, `High Risk`).
 - **Multi-Stage Disruption Simulation**: Simulates transit echelons (*Origin Dispatch*, *Main Line-Haul Transit*, *Transfer Hub*, *Final Delivery*) to model how upstream bottlenecks propagate downstream without double-counting.
 - **Data Quality & Audit Pipeline**: Automated detection of inverted dates, missing tracking records, and post-hoc leakage columns.
 - **Operations Dashboard**: Five-section Streamlit interface for dispatchers and fleet planners to evaluate routes, stress-test disruptions, and review model residuals in both Dark and Light themes.
@@ -55,7 +55,7 @@ SmartShip/
 ├── README.md                     # Project documentation & setup instructions
 │
 ├── data/
-│   ├── logistics_shipments_dataset.csv   # Raw Kaggle shipment records (2,000 rows)
+│   ├── logistics_shipments_dataset.csv   # Raw shipment records (2,000 rows)
 │   └── processed_shipments.csv           # Cleaned dataset (1,800 validated rows)
 │
 ├── src/
@@ -88,10 +88,12 @@ SmartShip/
 
 ## Dataset Source & Attribution
 
-- **Dataset**: US Logistics Performance Dataset
-- **Platform**: [Kaggle Logistics Datasets](https://www.kaggle.com/)
+- **Dataset**: [US Logistics Performance Dataset on Kaggle](https://www.kaggle.com/datasets/shahriarkabir/us-logistics-performance-dataset)
+- **Author Attribution**: Published on Kaggle by **Shahriar Kabir**.
+- **Dataset Role**: Used for delivery duration estimation, data quality auditing, and regression model evaluation.
 - **Volume**: 2,000 raw shipment records across 11 features (`Shipment_ID`, `Origin_Warehouse`, `Destination`, `Carrier`, `Shipment_Date`, `Delivery_Date`, `Weight_kg`, `Cost`, `Status`, `Distance_miles`, `Transit_Days`).
-- **Attribution**: Sourced from public Kaggle contributors for supply chain benchmarking. Authors of SmartyShips claim no ownership of the raw shipment records.
+- **Data Scope & Provenance Note**: The source dataset contains pre-departure features and calendar-day origin dispatch and delivery dates. It does **not** contain real-time GPS coordinates, weather readings, customs delays, road traffic sensor logs, or intermediate terminal milestone scans. Consequently, the multi-stage shipment breakdowns (*Origin Dispatch*, *Main Line-Haul*, *Transfer Hub*, *Final Delivery*) and disruption propagation timelines are **engineering simulations** constructed to model logistics mechanics, clearly distinguished from historical observations.
+- **Licensing & Terms**: The dataset is publicly accessible on Kaggle. The authors and contributors of SmartyShips claim no ownership of the underlying dataset, which remains under the terms established by its original author on Kaggle.
 
 ---
 
@@ -114,25 +116,50 @@ To guarantee realistic operational inference, only features available *prior to 
 
 ---
 
-## Model Evaluation & Verified Metrics
+## Model Performance and Limitations
 
-Models were evaluated on a held-out test split of **360 shipments (20% test partition, fixed seed `random_state=42`)**:
+### Evaluation Methodology
+Models were evaluated using an **80/20 train/test split** with a fixed random seed (`random_state=42`):
+- **Training partition**: 1,440 validated shipments
+- **Holdout test partition**: 360 shipments
 
-| Metric | Baseline Predictor (Median) | RandomForestRegressor Pipeline | Net Improvement |
+### Measured Results
+
+The measured metrics from [`models/evaluation_metrics.json`](models/evaluation_metrics.json) are:
+
+| Metric | Median Baseline | RandomForestRegressor Pipeline | Net Difference |
 | :--- | :---: | :---: | :---: |
-| **Mean Absolute Error (Days)** | 2.114 | **2.016** | **-0.098 days** |
-| **Mean Absolute Error (Hours)** | 50.73 | **48.38** | **-2.35 hours** |
-| **Root Mean Squared Error (Days)** | 3.359 | **3.105** | **-0.254 days** |
-| **Root Mean Squared Error (Hours)** | 80.63 | **74.53** | **-6.10 hours** |
-| **$R^2$ Score** | -0.0886 | **+0.0699** | **+0.1585** |
+| **MAE (Days)** | 2.114 | **2.016** | **-0.098 days** |
+| **MAE (Hours)** | 50.73 | **48.38** | **-2.35 hours** |
+| **RMSE (Days)** | 3.359 | **3.105** | **-0.254 days** |
+| **RMSE (Hours)** | 80.63 | **74.53** | **-6.10 hours** |
+| **$R^2$ Score** | -0.0886 | **+0.0699** | **+0.1585 gain** |
+
+### Metric Definitions in Plain English
+- **MAE (Mean Absolute Error)**: The average absolute magnitude of prediction errors in transit duration. An MAE of 48.38 hours means model predictions deviate from actual delivery by approximately 2 days on average.
+- **RMSE (Root Mean Squared Error)**: Similar to MAE, but squares individual errors before averaging, penalizing large outlier errors more heavily. At 74.53 hours (versus 80.63 hours for baseline), the Random Forest reduces the frequency of extreme forecast errors.
+- **$R^2$ (Coefficient of Determination)**: The proportion of variance in delivery duration explained by the model's features. An $R^2$ of **0.0699** (~7% of variance explained) indicates that static pre-departure attributes account for only a small portion of duration variance, with ~93% driven by unobserved real-world factors.
+
+### Honest Interpretation & Model Limitations
+1. **Modest Performance Improvement**: The Random Forest pipeline performs modestly better than the central-tendency median baseline, reducing average error by approximately 2.35 hours.
+2. **Limited Predictive Explanatory Power ($R^2 = 0.0699$)**: While the model captures non-linear interactions between distance, weight, and carrier routes, the low $R^2$ confirms that transit duration cannot be precisely forecasted from pre-departure features alone.
+3. **Estimates, Not Guarantees**: Model outputs should be treated as rough operational estimates for buffer planning, not guaranteed delivery commitments.
+4. **Data Granularity Constraints**: Date timestamps in the source data are recorded at calendar-day resolution without exact departure/arrival hours, introducing discrete rounding noise.
+5. **Generalization Scope**: A single random 80/20 split does not establish generalization across future operating seasons or previously unseen carrier lanes.
+
+### Proposed Future Improvements (Not Yet Implemented)
+- **Time-Based Validation**: Implementing temporal cross-validation (training on earlier months, testing on subsequent months) to evaluate time-series drift.
+- **Real-Time Telematics**: Integrating ELD and GPS tracking (e.g., Samsara, Geotab) to incorporate live highway speeds and driver duty hours.
+- **Carrier Milestone Feeds**: Consuming EDI 214 status messages and intermediate terminal departure scans.
+- **Environmental Data**: Ingesting real-time weather alerts (NOAA) and DOT traffic congestion indices along transit corridors.
+
+---
 
 ### Signed Error Definition
 Model residuals in [`models/test_predictions.csv`](models/test_predictions.csv) follow the consistent signed definition:
 $$\text{prediction\_error\_hours} = (\text{predicted\_duration\_days} - \text{actual\_duration\_days}) \times 24.0$$
 - **Negative value**: Underprediction (model predicted a shorter delivery duration than actual).
 - **Positive value**: Overprediction (model predicted a longer delivery duration than actual).
-
-The Random Forest model captures non-linear carrier-route interactions and outperforms the central-tendency median baseline across all error metrics while producing physically realistic, non-negative duration outputs.
 
 ---
 
@@ -145,11 +172,11 @@ Real supply chain networks consist of connected operational legs:
 4. **Final Delivery (10%)**: Courier dispatch and customer drop-off.
 
 > [!NOTE]
-> **Simulation Provenance**: The raw dataset contains total origin dispatch and delivery timestamps, but does not record intermediate GPS telemetry. Stage breakdowns and disruption cascades are engineering simulations designed to stress-test supply chain bottlenecks, clearly distinguished from historical observations.
+> **Simulation Provenance**: The raw dataset contains total origin dispatch and delivery timestamps, but does not record intermediate tracking events. Stage breakdowns and disruption cascades are engineering simulations designed to stress-test supply chain bottlenecks, clearly distinguished from historical observations.
 
 ### Guaranteed Single-Ledger Arithmetic
 Delays are injected at a specific stage and carried forward downstream through a single cumulative delay ledger:
-- An injected **+6.0 hour delay** at Main Transit shifts the final ETA by **exactly +6.0 hours** when no buffer is active.
+- An injected **+6.0 hour delay** at Main Transit shifts the final ETA by **exactly +6.0 hours** when no buffer absorbs it.
 - Delays are applied once and cascaded without recursive double-counting across subsequent transit legs.
 
 ---
@@ -214,7 +241,7 @@ Open **`http://localhost:8501`** in your browser.
 ## Dashboard Sections
 
 The application provides 5 operational tabs:
-1. **ETA & Delay Estimator**: Select origin warehouse, destination, carrier, distance, and weight to calculate predicted duration, UTC arrival timestamp, and SLA risk tier.
+1. **ETA & Delay Estimator**: Select origin warehouse, destination, carrier, distance, and weight to calculate estimated duration, UTC arrival timestamp, and SLA risk tier.
 2. **Disruption Simulator**: Interactive waterfall timeline modeling injected bottlenecks and buffer recovery across four shipment stages.
 3. **Model Evaluation & Residuals**: Parity charts, signed error distributions, and benchmark tables comparing the Random Forest pipeline against the median baseline.
 4. **Data Quality & Audit**: Cleaning audit scorecard showing filtered inversions, handled missing values, and leakage control audits.
@@ -222,10 +249,6 @@ The application provides 5 operational tabs:
 
 ---
 
-## Known Limitations & Future Improvements
+## License
 
-1. **Calendar-Day Granularity**: The source dataset records timestamps at day-level resolution rather than hour/minute timestamps, introducing unavoidable discrete rounding variance.
-2. **Absence of Real-Time Telematics**: Highway conditions, weather storms, and terminal dwell times are unobserved in the historical dataset; integrating ELD/GPS feeds (e.g. Samsara, Geotab) would improve $R^2$.
-3. **Feature Correlation vs. Causation**: Feature importances indicate empirical association in decision tree splits, not direct causal drivers.
-
-
+This project is licensed under the [MIT License](LICENSE). The underlying [US Logistics Performance Dataset on Kaggle](https://www.kaggle.com/datasets/shahriarkabir/us-logistics-performance-dataset) was published by Shahriar Kabir and remains under the terms established on Kaggle.
