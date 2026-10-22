@@ -81,7 +81,6 @@ SmartShip/
 │   └── test_propagation.py       # Stage duration balance and delay ledger tests
 │
 └── report/
-    ├── technical_report.md             # In-depth engineering report and validation results
     └── SmartyShips_Technical_Report.pdf# Publication-ready executive evaluation report (PDF)
 ```
 
