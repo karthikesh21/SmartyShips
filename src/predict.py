@@ -1,7 +1,7 @@
 """
-ETA and Delivery Duration Prediction module for Aiqon SmartShip AI.
+ETA and Delivery Duration Prediction module for SmartShip.
 Computes predicted delivery duration, estimated arrival timestamp (ETA),
-and schedule-relative delay against user expectations.
+and schedule-relative delay against target deadlines.
 """
 
 from datetime import datetime, timedelta, timezone

@@ -1,6 +1,6 @@
 """
-Data inspection script for Aiqon SmartShip AI.
-Inspects data/logistics_shipments_dataset.csv and reports exact statistics.
+Data inspection script for SmartShip.
+Audits data/logistics_shipments_dataset.csv and reports dataset statistics.
 """
 
 import sys

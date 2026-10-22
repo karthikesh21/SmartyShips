@@ -1,189 +1,161 @@
-# Aiqon SmartShip AI: Technical Evaluation Report
-**Predicting Shipment ETA, Schedule Delay Propagation, and Explainable Logistics Analytics**
+# SmartyShips: Technical Evaluation Report
+**Shipment Transit Duration Forecasting, SLA Risk Assessment, and Delay Propagation**
 
 ---
 
-## 1. Executive Summary & Problem Definition
-In contemporary supply chain logistics, supply chains face compounding uncertainties spanning variable transit distances, warehouse staging bottlenecks, regional carrier handling variances, and weather disruptions. Inaccurate Estimated Time of Arrival (ETA) predictions trigger expensive ripple effects: downstream cross-dock congestion, missed delivery service level agreements (SLAs), idle labor, and customer dissatisfaction.
+## 1. Problem Formulation & Scope
 
-The **Aiqon SmartShip AI** platform addresses this challenge by providing an end-to-end machine learning and simulation system that:
-1. Predicts **shipment delivery duration** and computes dynamic **Estimated Time of Arrival (ETA)** using genuine pre-shipment operational attributes.
-2. Estimates **expected delay magnitude** against customer- or contract-specified target schedules.
-3. Categorizes **schedule delay risks** into documented operational tiers (`On-time / Early`, `Low Risk`, `Moderate Risk`, `High Risk`).
-4. Delivers **interpretable model explanations** linking transit characteristics to delivery outcomes.
-5. Models **multi-stage disruption cascade** through a mathematical propagation engine that prevents double-counting.
+Freight logistics operations face compounding transit uncertainties across line-haul corridors, cross-dock sortation hubs, and regional carrier handoffs. Inaccurate transit time estimates lead to misallocated warehouse dock labor, missed delivery service level agreements (SLAs), and costly downstream expediting.
+
+SmartyShips is an engineering prototype designed to:
+1. Predict total shipment transit duration from pre-departure attributes.
+2. Calculate estimated arrival timestamps (ETA) standardized in UTC.
+3. Compare forecasted ETAs against contract delivery targets to classify SLA breach risks.
+4. Model stage-by-stage disruption cascades across distinct shipment legs without double-counting.
+5. Provide interpretable operational summaries explaining primary drivers of transit variance.
 
 ---
 
-## 2. Dataset Provenance, Inspection & Verified Schema
+## 2. Dataset & Quality Audit
 
-### 2.1 Dataset Source
-The system utilizes the real Kaggle US Logistics Performance Dataset:
-- **Source**: [Kaggle US Logistics Performance Dataset](https://www.kaggle.com/datasets/shahriarkabir/us-logistics-performance-dataset)
-- **Author**: Shahriar Kabir
-- **File**: `data/logistics_shipments_dataset.csv`
-- **Initial Volume**: Exactly **2,000 rows** and **11 columns**.
+### 2.1 Source Data
+The analysis uses the US Logistics Performance Dataset:
+- **Volume**: 2,000 raw shipment records across 11 features.
+- **Attributes**: `Shipment_ID`, `Origin_Warehouse`, `Destination`, `Carrier`, `Shipment_Date`, `Delivery_Date`, `Weight_kg`, `Cost`, `Status`, `Distance_miles`, `Transit_Days`.
 
-### 2.2 Verified Schema & Data Types
-Inspection via `src/inspect_data.py` confirmed the exact schema:
+### 2.2 Preprocessing & Data Cleaning
+An exploratory audit identified several anomalies requiring remediation before modeling:
 
-| Column Name | Raw Data Type | Description | Operational Role |
+1. **Chronological Inversions (16 records / 0.8%)**:
+   - Records with `Delivery_Date` earlier than `Shipment_Date` (e.g., dispatched August 10, recorded delivered July 11, resulting in `-30` transit days).
+   - *Resolution*: Removed as data entry errors.
+2. **Missing Delivery Dates (32 records / 1.6%)**:
+   - Records marked `Delivered` or `Delayed` with `NaN` values in `Delivery_Date`.
+   - *Resolution*: Excluded from duration training because ground truth arrival is absent.
+3. **Lost Cargo (45 records / 2.25%)**:
+   - Shipments marked `Lost` that never completed delivery.
+   - *Resolution*: Excluded from duration modeling.
+4. **Weight Anomalies**:
+   - Zero-weight record (`SH10744`) filtered. Extreme outliers capped at the 99.5th percentile (152.7 kg) to reduce leverage on tree splits.
+
+**Final Cleaned Dataset**: **1,800 records** (90.0% retention).
+
+---
+
+## 3. Target Formulation & Feature Space
+
+### 3.1 Target Definition
+Because timestamps in the source dataset are provided at calendar-day granularity, the historical transit duration is defined as:
+$$\text{duration\_days} = \text{Delivery\_Date} - \text{Shipment\_Date}$$
+$$\text{duration\_hours} = \text{duration\_days} \times 24.0$$
+
+### 3.2 Pre-Shipment Features & Leakage Control
+To prevent data leakage, only attributes available *prior to dispatch* are used:
+
+| Feature | Type | Preprocessing | Role |
 | :--- | :--- | :--- | :--- |
-| `Shipment_ID` | `object` (string) | Unique shipment identifier (e.g., `SH10000`) | Non-predictive identifier |
-| `Origin_Warehouse` | `object` (string) | 10 regional warehouse facilities | Pre-shipment categorical feature |
-| `Destination` | `object` (string) | 15 destination metropolitan cities | Pre-shipment categorical feature |
-| `Carrier` | `object` (string) | 7 national and regional freight carriers | Pre-shipment categorical feature |
-| `Shipment_Date` | `object` (string) | Date cargo departed warehouse (`YYYY-MM-DD`) | Temporal feature baseline |
-| `Delivery_Date` | `object` (string) | Date cargo arrived at destination (`YYYY-MM-DD`) | Target definition (post-hoc) |
-| `Weight_kg` | `float64` | Package or pallet weight in kilograms | Pre-shipment numerical feature |
-| `Cost` | `float64` | Invoiced transportation cost in USD | Excluded (contains nulls, post-hoc) |
-| `Status` | `object` (string) | Recorded status (`Delivered`, `Delayed`, etc.) | Post-hoc event (leakage prevention) |
-| `Distance_miles` | `int64` | Distance between origin and destination | Pre-shipment numerical feature |
-| `Transit_Days` | `int64` | Recorded transit interval | Excluded (target leakage artifact) |
+| `Distance_miles` | Numeric | Standard scaling | Spatial corridor distance |
+| `Weight_kg` | Numeric | Capping + standard scaling | Cargo mass |
+| `Shipment_Month` | Numeric | Standard scaling | Seasonal freight volume proxy |
+| `Shipment_DayOfWeek` | Numeric | Standard scaling | Weekend dispatch cycle proxy |
+| `Origin_Warehouse` | Categorical | One-hot encoding (unknowns handled) | Staging facility (10 hubs) |
+| `Destination` | Categorical | One-hot encoding (unknowns handled) | Target metropolitan city (15 cities) |
+| `Carrier` | Categorical | One-hot encoding (unknowns handled) | Operating freight carrier (7 carriers) |
+
+**Excluded Features**:
+- `Delivery_Date`, `Status`: Recorded post-delivery.
+- `Cost`: Invoiced post-transit, incomplete records.
+- `Transit_Days`: Dataset column identically equal to `(Delivery_Date - Shipment_Date)`. Passing this into the model would constitute 100% target leakage.
 
 ---
 
-## 3. Data Quality Audit & Cleaning Decisions
+## 4. Modeling & Experimental Results
 
-Exploratory audit of the raw dataset uncovered critical anomalies that dictated strict preprocessing protocols:
+### 4.1 Methodology
+- **Split**: 80% train (1,440 records) and 20% test (360 records), fixed seed (`random_state=42`).
+- **Baseline**: Median transit duration of the training set ($4.0\text{ days} / 96.0\text{ hours}$).
+- **Production Pipeline**: `RandomForestRegressor` (200 estimators, max depth 12, min samples split 4) combined with a Scikit-Learn `ColumnTransformer`.
 
-1. **Missing Delivery Dates (32 records, 1.60%)**:
-   - 27 marked `Delivered` and 5 marked `Delayed` had `NaN` values for `Delivery_Date`.
-   - *Decision*: Excluded from training set because actual delivery duration cannot be calculated without an arrival timestamp.
-2. **Chronologically Inverted Dates (16 records, 0.80%)**:
-   - 16 records featured `Delivery_Date` occurring before `Shipment_Date` (e.g., Row 20: Dispatched `2023-08-10`, Delivered `2023-07-11`, resulting in `-30` days).
-   - *Decision*: Excluded as corrupt data entry artifacts.
-3. **Lost Shipments (45 records, 2.25%)**:
-   - Shipments with `Status == Lost` failed transit completion.
-   - *Decision*: Excluded from duration training because aborted journeys do not represent delivered transit intervals.
-4. **Zero Weight Anomaly (1 record, 0.05%)**:
-   - Record `SH10744` listed a weight of `0.0 kg`.
-   - *Decision*: Excluded as an invalid freight entry.
-5. **Extreme Weight Outliers (Max 5,404.2 kg)**:
-   - While the 99th percentile of package weights is 111.1 kg, isolated outliers reached 5,404.2 kg.
-   - *Decision*: Capped at the 99.5th percentile (152.7 kg) to protect tree split variance from extreme single-sample leverage.
-6. **The Kaggle `Transit_Days` Target Leakage Artifact**:
-   - Detailed analysis revealed that for `Delivered` shipments, `Transit_Days == (Delivery_Date - Shipment_Date)` in 100% of non-corrupt rows.
-   - Using `Transit_Days` as a model feature would constitute **direct target leakage**. Consequently, `Transit_Days` was **strictly excluded** from all predictive pipelines.
+### 4.2 Test Set Performance
 
-**Final Cleaned Dataset**:
-- **Total Valid Training Records**: **1,800 rows** (90.0% retention).
-- **Excluded Records**: **200 rows** (10.0% filtered across missing dates, inverted dates, lost status, and zero weight).
+| Metric | Baseline (Median) | Random Forest Pipeline | Net Improvement |
+| :--- | :---: | :---: | :---: |
+| **Mean Absolute Error (Days)** | 2.114 | **2.016** | **-0.098 days** |
+| **Mean Absolute Error (Hours)** | 50.73 | **48.38** | **-2.35 hours** |
+| **Root Mean Squared Error (Days)** | 3.359 | **3.105** | **-0.254 days** |
+| **Root Mean Squared Error (Hours)** | 80.63 | **74.53** | **-6.10 hours** |
+| **$R^2$ Score** | -0.0886 | **+0.0699** | **+0.1585** |
 
----
+### 4.3 Signed Error Definition & Residual Analysis
+Evaluation errors and residuals are defined using the consistent signed convention:
+$$\text{prediction\_error\_days} = \text{predicted\_days} - \text{actual\_days}$$
+$$\text{prediction\_error\_hours} = (\text{predicted\_days} - \text{actual\_days}) \times 24.0$$
+- **Negative value**: Underprediction (predicted duration is shorter than actual delivery).
+- **Positive value**: Overprediction (predicted duration is longer than actual delivery).
 
-## 4. Target Variable Formulation & Feature Engineering
-
-### 4.1 Target Definition
-Because the Kaggle dataset provides day-level timestamps without a pre-existing contractual SLA timestamp column, the actual delivery duration is formulated as:
-$$\text{delivery\_duration\_days} = \text{Delivery\_Date} - \text{Shipment\_Date}$$
-$$\text{delivery\_duration\_hours} = \text{delivery\_duration\_days} \times 24.0$$
-
-### 4.2 Pre-Shipment Feature Space
-Only features genuinely accessible prior to vehicle dispatch are utilized:
-- **Categorical (OneHotEncoded with unknown handling)**:
-  - `Origin_Warehouse` (10 categories: MIA, LA, BOS, SF, ATL, CHI, HOU, SEA, NYC, DEN)
-  - `Destination` (15 cities: Atlanta, Boston, Chicago, Dallas, Detroit, Houston, Los Angeles, Miami, Minneapolis, New York, Phoenix, Portland, San Francisco, Seattle)
-  - `Carrier` (7 carriers: Amazon Logistics, DHL, FedEx, LaserShip, OnTrac, UPS, USPS)
-- **Numerical (StandardScaler)**:
-  - `Distance_miles`: Primary spatial transit predictor.
-  - `Weight_kg`: Cargo load metric.
-  - `Shipment_Month`: Captures seasonal shipping volume and weather seasonality.
-  - `Shipment_DayOfWeek`: Captures weekend dispatch and terminal handling cycles.
+Given that the source dataset contains day-level dates without real-time GPS telematics or weather telemetry, residual variance naturally reflects unobserved roadway conditions and local distribution queue times. The Random Forest pipeline captures non-linear carrier-route interactions and reduces overall MAE by over 2.3 hours compared to the central tendency baseline.
 
 ---
 
-## 5. Machine Learning Methodology & Measured Evaluation
+## 5. ETA Arithmetic & Risk Categorization
 
-### 5.1 Experimental Setup
-- **Split Strategy**: Train/test split of 80% train (1,440 records) and 20% test (360 records) using a fixed seed (`random_state=42`).
-- **Baseline Model**: Median Delivery Duration of the training partition ($4.00\text{ days} = 96.0\text{ hours}$).
-- **Primary Model**: `RandomForestRegressor` with 200 estimators, max depth 12, min samples split 4, and min samples leaf 2 encapsulated within a Scikit-learn Pipeline.
+### 5.1 ETA Formulation
+For a departure timestamp $T_{\text{dep}}$:
+$$\text{ETA}_{\text{UTC}} = T_{\text{dep}} + \Delta t_{\text{predicted\_hours}}$$
+All timestamps are standardized to UTC.
 
-### 5.2 Measured Evaluation Results
-All metrics were computed strictly from the held-out 360-sample test set (never hardcoded):
+### 5.2 Contract SLA Delay Calculation
+When a contractual arrival deadline $T_{\text{target}}$ is specified:
+$$\text{Delay}_{\text{hours}} = \frac{\text{ETA}_{\text{UTC}} - T_{\text{target}}}{3600}$$
+- **Negative delay ($\le 0$ hours)**: On track / early delivery.
+- **Positive delay ($> 0$ hours)**: Potential breach of contract deadline.
 
-| Model Architecture | MAE (Days) | MAE (Hours) | RMSE (Days) | RMSE (Hours) | Test $R^2$ |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Baseline Predictor (Median)** | 2.114 days | 50.73 hours | 3.359 days | 80.63 hours | -0.0886 |
-| **RandomForestRegressor Pipeline** | **2.016 days** | **48.38 hours** | **3.105 days** | **74.53 hours** | **+0.0699** |
-| **Absolute Improvement** | **-0.098 days** | **-2.35 hours** | **-0.254 days** | **-6.10 hours** | **+0.1585** |
-
-### 5.3 Analysis of Measured Results
-The Random Forest pipeline outperforms the baseline median across both Mean Absolute Error (-2.35 hours) and Root Mean Squared Error (-6.10 hours). In logistics freight modeling with aggregate day-level timestamps and without real-time GPS telemetry, residual variance reflects real-world highway traffic, terminal cross-dock queuing, and weather events. The model captures non-linear route-carrier interactions while guaranteeing non-negative, bounded predictions.
-
----
-
-## 6. ETA Calculation & Schedule-Relative Delay Logic
-
-### 6.1 ETA Prediction Formula
-For any shipment with planned departure timestamp $T_{\text{dep}}$:
-$$\text{predicted\_delivery\_timestamp} = T_{\text{dep}} + \Delta t_{\text{predicted\_hours}}$$
-All timestamps are standardized to **UTC** to prevent timezone conversion discrepancies and daylight saving ambiguities.
-
-### 6.2 Schedule-Relative Delay Audit
-When a contract-specified expected arrival timestamp $T_{\text{expected}}$ is supplied:
-$$\text{estimated\_delay\_hours} = \frac{T_{\text{predicted\_delivery}} - T_{\text{expected}}}{3600\text{ seconds}}$$
-- **Negative delay ($\le 0$ hours)**: Prediction is earlier than or equal to deadline (Early / On Time).
-- **Positive delay ($> 0$ hours)**: Prediction breaches target deadline.
-
-### 6.3 Documented Risk Categorization Thresholds
-Configurable application thresholds classify delay severity:
-- **On Time / Early**: $\text{Delay} \le 0.0\text{ hours}$ (Buffer intact)
-- **Low Risk**: $0.0 < \text{Delay} \le 12.0\text{ hours}$ (Minor operational variance)
-- **Moderate Risk**: $12.0 < \text{Delay} \le 24.0\text{ hours}$ (Buffer depleted)
-- **High Risk**: $\text{Delay} > 24.0\text{ hours}$ (Severe SLA breach)
+### 5.3 Risk Classification Tiers
+Operational risk tiers are configured as:
+- **On Time / Early**: $\text{Delay} \le 0\text{ h}$ (SLA buffer preserved).
+- **Low Risk**: $0 < \text{Delay} \le 12\text{ h}$ (Within routine operational variance).
+- **Moderate Risk**: $12 < \text{Delay} \le 24\text{ h}$ (Buffer exhausted, priority tracking advised).
+- **High Risk**: $\text{Delay} > 24\text{ h}$ (Imminent SLA penalty; re-routing or expediting required).
 
 ---
 
-## 7. Multi-Stage Delay Propagation Simulation
+## 6. Multi-Stage Disruption Propagation
 
-### 7.1 Separation of Real vs. Simulated Telemetry
-The Kaggle dataset contains only warehouse dispatch and final destination delivery dates. To illustrate how disruptions cascade through multi-echelon freight corridors, a separate **stage-level simulation engine** was designed with strict provenance labeling:
+> [!NOTE]
+> **Data Provenance**: The raw Kaggle logistics dataset records total origin dispatch and final delivery dates, but does not provide intermediate GPS or EDI milestone scans. Consequently, stage breakdowns (15% Origin, 55% Line-haul, 20% Hub, 10% Last-mile) and disruption propagation timelines are engineering simulations constructed to model real-world supply chain mechanics, clearly distinguished from historical observations.
 
-| Stage | Nominal Share (%) | Operational Function | Data Provenance |
-| :--- | :---: | :--- | :---: |
-| **1. Origin Dispatch** | 15% | Pallet picking, staging, and outbound carrier scan | Simulated Decomposition |
-| **2. Main Transit** | 55% | Interstate highway long-haul trunkline transit | Simulated Decomposition |
-| **3. Transfer Hub** | 20% | Regional cross-dock classification & sortation | Simulated Decomposition |
-| **4. Final Delivery** | 10% | Last-mile dispatch, urban navigation, and customer sign-off | Simulated Decomposition |
+### 6.1 Operational Stages
+Routes are partitioned across four standard logistics echelons:
+1. **Origin Dispatch (15%)**: Sorting, palletization, outbound scanning.
+2. **Main Transit (55%)**: Interstate long-haul line-haul.
+3. **Sorting / Transfer Hub (20%)**: Break-bulk cross-dock sorting.
+4. **Final Delivery (10%)**: Courier dispatch and delivery.
 
-### 7.2 Non-Double-Counting Propagation Algorithm
-Disruptions injected into upstream stages (e.g., 12-hour customs hold or weather delay during Main Transit) are propagated downstream via a **single cumulative delay total**:
+### 6.2 Single Cumulative Delay Ledger
+To avoid double-counting injected delays, subsequent stages inherit upstream delays via cumulative summation:
 $$T_{\text{start}, i} = T_{\text{end}, i-1}$$
-$$T_{\text{end}, i} = T_{\text{start}, i} + \Delta t_{\text{nominal}, i} + \text{Injected}_{i} - \text{BufferRecovered}_{i}$$
-This mathematical guarantee ensures that injecting 12 hours of delay shifts the final ETA by exactly 12 hours (less any active downstream buffer recovery), strictly preventing multiplicative double counting.
+$$T_{\text{end}, i} = T_{\text{start}, i} + \text{NominalDuration}_i + \text{InjectedDelay}_i - \text{BufferRecovered}_i$$
+
+Injecting a 6-hour delay during Main Transit shifts the final ETA by exactly 6 hours (when no recovery buffer is configured). The delay is applied once at the disruption point and carried forward across downstream legs without recursive re-injection.
 
 ---
 
-## 8. Model Interpretability & Explainability
+## 7. Operational Drivers & Feature Impact
 
-Aggregated feature importances from the fitted pipeline reveal the primary operational factors:
-1. **Transit Distance (miles)** (~40-45% importance): Dominant structural driver of transit duration across interstate routes.
-2. **Carrier Selection** (~20-25% importance): Distinguishes priority express networks (e.g., FedEx, UPS) from deferred parcel carriers (e.g., LaserShip, OnTrac).
-3. **Cargo Weight (kg)** (~15-18% importance): Influences vehicle load configurations and handling velocity.
-4. **Warehouse Origin & Destination Pair** (~10-15% importance): Reflects regional corridor infrastructure and terminal congestion.
-5. **Departure Month & Day-of-Week** (~5% importance): Captures weekend linehaul slowdowns and holiday peak shipping volume.
+Aggregating one-hot encoded tree split importances back to root operational variables indicates their relative predictive association (importances reflect empirical correlation in tree splits, not direct causal proof):
+1. **Transit Distance (~40-45%)**: Primary structural baseline for line-haul transit times.
+2. **Carrier Selection (~20-25%)**: Differences between express networks (FedEx, UPS) and ground freight services.
+3. **Cargo Weight (~15-18%)**: Heavier consignments require freight pallet handling and LTL consolidation.
+4. **Origin-Destination Corridor (~10-15%)**: Regional infrastructure density and cross-dock hub frequency.
+5. **Dispatch Day / Month (~5%)**: Weekend depot schedules and seasonal shipping volume shifts.
 
-> **Methodological Disclaimer**: Feature importance identifies statistical association within the training distribution; it does not constitute mechanical causality.
-
----
-
-## 9. Limitations & Enterprise Telemetry Roadmap
-
-### 9.1 Dataset Limitations
-- Day-level date granularity (absence of exact minute-level timestamps).
-- Absence of real-time GPS coordinates, vehicle ELD logs, or waypoint check-ins.
-- Unobserved exogenous variables: highway accidents, severe weather, and port dwell times.
-
-### 9.2 Enterprise Deployment Roadmap
-In a live commercial deployment, the simulated stages and static features would be augmented with:
-1. **Fleet ELD & Telematics (Samsara / Geotab API)**: Real-time road speeds, driver hours-of-service, and GPS tracking.
-2. **Carrier EDI 214 Status Feeds**: Automated milestone event scans across origin, sorting hubs, and out-for-delivery.
-3. **Live NOAA Weather & DOT 511 Traffic APIs**: Dynamic transit speed impedance calculations.
-4. **CBP Automated Commercial Environment (ACE)**: Real-time customs holds and release notifications.
 
 ---
 
-## 10. Conclusion
-The **Aiqon SmartShip AI** application establishes a robust, reproducible, and transparent framework for logistics ETA forecasting and risk management. By combining rigorous data auditing, zero target leakage, verified machine learning models, and clear separation between historical observations and stage simulations, the platform delivers actionable operational intelligence suitable for enterprise evaluation.
+## 8. Enterprise Roadmap & Production Integration
+
+In an enterprise production deployment, this platform can be integrated with live supply chain systems:
+1. **Telematics & ELD Feeds (Samsara, Geotab)**: Live truck GPS positions, driver hours-of-service, and average speed.
+2. **Carrier EDI Feeds (EDI 214 / API Webhooks)**: Real-time milestone scans (departure scan, arrival at terminal, out for delivery).
+3. **Weather & Traffic Feeds (NOAA, DOT 511)**: Dynamic impedance modeling for severe weather or highway closures.
+4. **Dynamic Rescheduling Engine**: Automated alerts to destination cross-dock managers when moderate or high delay risks are detected.

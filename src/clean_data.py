@@ -1,7 +1,7 @@
 """
-Data cleaning and preprocessing script for Aiqon SmartShip AI.
-Loads data/logistics_shipments_dataset.csv, applies robust cleaning decisions,
-and saves the result to data/processed_shipments.csv.
+Data cleaning and preprocessing script for SmartShip.
+Loads data/logistics_shipments_dataset.csv, filters invalid dates and records,
+and outputs data/processed_shipments.csv.
 """
 
 from pathlib import Path
@@ -20,9 +20,7 @@ def clean_dataset(
         else:
             raise FileNotFoundError(f"Input file not found at {input_path} or {alt}")
 
-    print("=" * 65)
-    print("AIQON SMARTSHIP AI: DATA CLEANING PIPELINE")
-    print("=" * 65)
+    print("SmartShip: Running data cleaning pipeline...")
     print(f"Reading raw data from: {in_file.resolve()}")
     df = pd.read_csv(in_file)
     initial_rows = len(df)

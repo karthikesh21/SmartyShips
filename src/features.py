@@ -1,6 +1,6 @@
 """
-Feature engineering and preprocessing pipeline for Aiqon SmartShip AI.
-Ensures zero target leakage and produces clean feature matrices for training and inference.
+Feature engineering and preprocessing pipeline for SmartShip.
+Transforms raw features into model inputs while strictly excluding target leakage columns.
 """
 
 from typing import Tuple, List, Dict, Any

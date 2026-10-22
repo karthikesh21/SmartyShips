@@ -1,7 +1,7 @@
 """
-Delay Propagation Simulator for Aiqon SmartShip AI.
+Delay Propagation Simulator for SmartShip.
 Simulates multi-stage supply chain timelines, propagates upstream disruptions
-downstream without double counting, and strictly labels simulated vs observed data.
+downstream without double counting.
 """
 
 from datetime import datetime, timedelta, timezone

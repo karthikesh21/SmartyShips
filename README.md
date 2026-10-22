@@ -1,154 +1,235 @@
-# 🚢 Aiqon SmartShip AI: Predictive Shipment ETA & Delay Propagation Platform
+# SmartyShips: Intelligent Shipment Analytics & Delay Propagation Platform
 
-[![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.40+-FF4B4B.svg)](https://streamlit.io)
-[![Scikit-Learn](https://img.shields.io/badge/Scikit--Learn-1.3+-F7931E.svg)](https://scikit-learn.org/)
-[![Tests Passing](https://img.shields.io/badge/Tests-18%20Passed-brightgreen.svg)]()
+A machine learning pipeline and interactive operations dashboard for estimating freight transit durations, detecting contract SLA breach risks, and modeling multi-stage delay propagation across supply chain corridors.
 
-> **Aiqon AI Internship Take-Home Assignment: Predicting Shipment ETA and Delay Propagation Using AI**  
-> Developed as a production-grade, reproducible logistics intelligence platform built strictly on the genuine Kaggle US Logistics Performance Dataset.
+Built on the **US Logistics Performance Dataset** (2,000 shipment records).
 
 ---
 
-## 📌 Executive Overview
+## Overview
 
-**Aiqon SmartShip AI** is an intelligent supply chain analytics application designed to predict shipment transit duration, calculate precise estimated arrival timestamps (ETA), assess schedule-relative delay risk, and simulate multi-stage disruption cascades across national logistics corridors.
+Accurate transit time forecasting is critical for modern logistics operations. Delays at early freight milestones often cascade into severe downstream cross-dock congestion and customer SLA penalties.
 
-### Core Capabilities
-- **Supervised ML Transit Duration & ETA Forecasting**: Predicts transit days/hours using genuine pre-shipment attributes without target leakage.
-- **Contract Schedule Delay & Risk Categorization**: Audits predicted arrival against user-defined SLA target dates with documented, configurable risk tiers (`On Time / Early`, `Low Risk`, `Moderate Risk`, `High Risk`).
-- **Multi-Stage Disruption Propagation Simulator**: Decomposes routes into documented operational echelons (Origin Dispatch, Main Transit, Transfer Hub, Final Delivery) and tracks cumulative downstream delay without double-counting.
-- **Interpretable AI Analytics**: Quantifies feature importance and produces plain-English executive decision narratives with statistical association disclaimers.
-- **Data Quality & Leakage Audit**: Identifies date order inversions, missing tracking records, and the Kaggle dataset's post-hoc `Transit_Days` column to prevent data leakage.
-- **Interactive Streamlit Intelligence Dashboard**: A responsive executive cockpit styled in a modern corporate logistics theme (Navy, Light Blue, White, Emerald, Amber, Crimson).
+**SmartyShips** provides:
+- **Transit Duration & ETA Modeling**: Supervised machine learning (`RandomForestRegressor` pipeline) predicting delivery duration from pre-shipment attributes without target leakage.
+- **SLA Breach Risk Classification**: Compares predicted arrival against user-defined contract deadlines into operational risk tiers (`On Time`, `Low Risk`, `Moderate Risk`, `High Risk`).
+- **Multi-Stage Disruption Simulation**: Simulates transit echelons (*Origin Dispatch*, *Main Line-Haul Transit*, *Transfer Hub*, *Final Delivery*) to model how upstream bottlenecks propagate downstream without double-counting.
+- **Data Quality & Audit Pipeline**: Automated detection of inverted dates, missing tracking records, and post-hoc leakage columns.
+- **Operations Dashboard**: Five-section Streamlit interface for dispatchers and fleet planners to evaluate routes, stress-test disruptions, and review model residuals in both Dark and Light themes.
 
 ---
 
-## 🏗️ Project Architecture
+## Key Features
+
+1. **Pre-Shipment Predictive Modeling**: Estimates transit duration in both days and hours using strictly pre-departure features.
+2. **UTC-Standardized ETA Arithmetic**: Calculates estimated arrival times in timezone-aware UTC:
+   $$\text{ETA}_{\text{UTC}} = T_{\text{departure}} + \Delta t_{\text{predicted\_hours}}$$
+3. **Contract SLA Delay Variance**: Evaluates schedule variance against customer deadlines:
+   $$\text{Delay}_{\text{hours}} = \frac{\text{ETA}_{\text{UTC}} - T_{\text{expected}}}{3600}$$
+4. **Single-Ledger Disruption Simulator**: Propagates delays downstream across distinct legs while guaranteeing zero double-counting.
+5. **Interactive Operations Dashboard**: High-contrast, dynamic dashboard featuring 5 operational views, corridor volume flow Sankey diagrams, and residual diagnostic plots.
+
+---
+
+## Technology Stack
+
+- **Language**: Python 3.10+ (tested on Python 3.11)
+- **Interactive UI**: Streamlit 1.30+
+- **Machine Learning**: Scikit-Learn (Pipelines, `RandomForestRegressor`, `ColumnTransformer`, `OneHotEncoder`, `StandardScaler`)
+- **Data Processing**: Pandas, NumPy
+- **Interactive Visualizations**: Plotly Express & Plotly Graph Objects
+- **Model Persistence**: Joblib
+- **Automated Testing**: Pytest
+
+---
+
+## Project Structure
 
 ```
 SmartShip/
-├── app.py                     # Interactive Streamlit dashboard
-├── requirements.txt           # Python dependencies (Streamlit, Scikit-learn, Plotly, etc.)
-├── README.md                  # Comprehensive documentation & Windows setup guide
+├── .streamlit/
+│   └── config.toml               # Streamlit theme configuration (Dark base palette)
+├── app.py                        # Streamlit operations dashboard (5 functional views)
+├── requirements.txt              # Core Python dependencies
+├── LICENSE                       # MIT License with dataset attribution notice
+├── README.md                     # Project documentation & setup instructions
 │
 ├── data/
-│   ├── logistics_shipments_dataset.csv   # Primary raw Kaggle dataset (Shahriar Kabir)
-│   └── processed_shipments.csv           # Cleaned dataset with quality flags & audit trails
+│   ├── logistics_shipments_dataset.csv   # Raw Kaggle shipment records (2,000 rows)
+│   └── processed_shipments.csv           # Cleaned dataset (1,800 validated rows)
 │
 ├── src/
-│   ├── __init__.py            # Package initialization
-│   ├── inspect_data.py        # Dataset exploratory audit and schema verification
-│   ├── clean_data.py          # Cleaning pipeline, date order checks, and outlier handling
-│   ├── features.py            # Preprocessing pipeline, OneHotEncoding, zero-leakage guarantee
-│   ├── train.py               # Model training (Baseline Median vs RandomForestRegressor)
-│   ├── predict.py             # UTC timestamp normalization, ETA & schedule delay engine
-│   ├── explain.py             # Risk categorization, feature importance & plain-English narratives
-│   └── propagation.py         # Multi-stage cascade simulation and single cumulative delay ledger
+│   ├── __init__.py               # Package root
+│   ├── inspect_data.py           # Data audit and schema verification script
+│   ├── clean_data.py             # Data cleaning and sanity checks
+│   ├── features.py               # Feature transformation pipeline (OneHot + Scaler)
+│   ├── train.py                  # Model training & benchmarking (Baseline vs Random Forest)
+│   ├── predict.py                # UTC-standardized ETA and delay calculation engine
+│   ├── explain.py                # Feature importance and SLA risk categorization
+│   ├── propagation.py            # Multi-stage disruption propagation logic
+│   └── chart_theme.py            # Unified Plotly theme and dark/light mode palette
 │
 ├── models/
-│   ├── eta_model.joblib       # Fitted Scikit-learn pipeline artifact
-│   ├── evaluation_metrics.json# Machine-readable performance metrics
-│   └── test_predictions.csv  # Held-out test set predictions & residuals for analytics
+│   ├── eta_model.joblib          # Serialized Scikit-learn pipeline artifact (~6.2 MB)
+│   ├── evaluation_metrics.json   # Test-set evaluation metrics
+│   └── test_predictions.csv      # Holdout test set predictions and signed errors
 │
 ├── tests/
-│   ├── __init__.py
-│   ├── test_data.py           # Tests for schema, cleaning, negative durations, and zero leakage
-│   ├── test_predictions.py    # Tests for model inference, ETA arithmetic, and risk rules
-│   └── test_propagation.py    # Tests for stage proportions, no double counting, and safe fallbacks
+│   ├── test_chart_theme.py       # Theme palette and chart styling tests
+│   ├── test_data.py              # Data integrity, schema, and leakage tests
+│   ├── test_predictions.py       # Inference arithmetic, delay sign, and risk threshold tests
+│   └── test_propagation.py       # Stage duration balance and delay ledger tests
 │
 └── report/
-    └── technical_report.md    # 3-page comprehensive technical evaluation report
+    └── technical_report.md       # In-depth engineering report and validation results
 ```
 
 ---
 
-## 💻 Windows Setup & Execution Workflow
+## Dataset Source & Attribution
 
-Follow this step-by-step workflow in PowerShell or Windows Terminal:
+- **Dataset**: US Logistics Performance Dataset
+- **Platform**: [Kaggle Logistics Datasets](https://www.kaggle.com/)
+- **Volume**: 2,000 raw shipment records across 11 features (`Shipment_ID`, `Origin_Warehouse`, `Destination`, `Carrier`, `Shipment_Date`, `Delivery_Date`, `Weight_kg`, `Cost`, `Status`, `Distance_miles`, `Transit_Days`).
+- **Attribution**: Sourced from public Kaggle contributors for supply chain benchmarking. Authors of SmartyShips claim no ownership of the raw shipment records.
 
-### 1. Clone or Open the Repository
+---
+
+## Data Pipeline & Leakage Prevention
+
+### Cleaning Decisions
+The raw dataset contains 2,000 records. The cleaning pipeline handles:
+1. **Chronological Inversions (16 records / 0.8%)**: Records where `Delivery_Date` occurs prior to `Shipment_Date` (yielding negative transit durations down to -30 days) are removed as corrupt data.
+2. **Missing Delivery Dates (32 records / 1.6%)**: Incomplete shipments marked delivered but lacking arrival timestamps are excluded from duration modeling.
+3. **Lost Shipments (45 records / 2.25%)**: Shipments marked `Lost` where transit was aborted are filtered out.
+4. **Weight Anomalies**: Zero-weight records are filtered and extreme outliers capped at the 99.5th percentile (152.7 kg) to prevent excessive leverage on tree splits.
+
+**Final Cleaned Dataset**: **1,800 validated records (90.0% retention)**.
+
+### Target Leakage Prevention
+To guarantee realistic operational inference, only features available *prior to dispatch* are used:
+- **Included Features**: `Origin_Warehouse`, `Destination`, `Carrier`, `Distance_miles`, `Weight_kg`, `Shipment_Month`, `Shipment_DayOfWeek`.
+- **Excluded Features**: `Delivery_Date`, `Status`, `Cost` (finalized post-delivery).
+- **Strictly Excluded Target Leakage**: The dataset column `Transit_Days` identically matches `(Delivery_Date - Shipment_Date)` for delivered cargo. Passing it as a predictor would constitute 100% target leakage, so it is strictly excluded.
+
+---
+
+## Model Evaluation & Verified Metrics
+
+Models were evaluated on a held-out test split of **360 shipments (20% test partition, fixed seed `random_state=42`)**:
+
+| Metric | Baseline Predictor (Median) | RandomForestRegressor Pipeline | Net Improvement |
+| :--- | :---: | :---: | :---: |
+| **Mean Absolute Error (Days)** | 2.114 | **2.016** | **-0.098 days** |
+| **Mean Absolute Error (Hours)** | 50.73 | **48.38** | **-2.35 hours** |
+| **Root Mean Squared Error (Days)** | 3.359 | **3.105** | **-0.254 days** |
+| **Root Mean Squared Error (Hours)** | 80.63 | **74.53** | **-6.10 hours** |
+| **$R^2$ Score** | -0.0886 | **+0.0699** | **+0.1585** |
+
+### Signed Error Definition
+Model residuals in [`models/test_predictions.csv`](models/test_predictions.csv) follow the consistent signed definition:
+$$\text{prediction\_error\_hours} = (\text{predicted\_duration\_days} - \text{actual\_duration\_days}) \times 24.0$$
+- **Negative value**: Underprediction (model predicted a shorter delivery duration than actual).
+- **Positive value**: Overprediction (model predicted a longer delivery duration than actual).
+
+The Random Forest model captures non-linear carrier-route interactions and outperforms the central-tendency median baseline across all error metrics while producing physically realistic, non-negative duration outputs.
+
+---
+
+## Disruption Propagation Engine
+
+Real supply chain networks consist of connected operational legs:
+1. **Origin Dispatch (15%)**: Staging, picking, and carrier outbound scanning.
+2. **Main Line-Haul Transit (55%)**: Interstate long-haul highway movement.
+3. **Sorting / Transfer Hub (20%)**: Break-bulk cross-dock sorting.
+4. **Final Delivery (10%)**: Courier dispatch and customer drop-off.
+
+> [!NOTE]
+> **Simulation Provenance**: The raw dataset contains total origin dispatch and delivery timestamps, but does not record intermediate GPS telemetry. Stage breakdowns and disruption cascades are engineering simulations designed to stress-test supply chain bottlenecks, clearly distinguished from historical observations.
+
+### Guaranteed Single-Ledger Arithmetic
+Delays are injected at a specific stage and carried forward downstream through a single cumulative delay ledger:
+- An injected **+6.0 hour delay** at Main Transit shifts the final ETA by **exactly +6.0 hours** when no buffer is active.
+- Delays are applied once and cascaded without recursive double-counting across subsequent transit legs.
+
+---
+
+## Installation & Windows Quickstart
+
+### 1. Environment Setup
+
+Create and activate a Python virtual environment (PowerShell):
+
 ```powershell
-cd d:\projects\SmartShip
-```
-
-### 2. Create and Activate Virtual Environment
-```powershell
+# Create virtual environment
 python -m venv .venv
-.\.venv\Scripts\activate
+
+# Activate virtual environment
+.\.venv\Scripts\Activate.ps1
 ```
 
-### 3. Install Dependencies
+Install dependencies:
+
 ```powershell
 pip install -r requirements.txt
 ```
 
-### 4. Verify Raw Dataset
-Ensure the raw Kaggle dataset is located at:
-```
-data/logistics_shipments_dataset.csv
-```
-*(If missing, download from [Kaggle US Logistics Performance Dataset](https://www.kaggle.com/datasets/shahriarkabir/us-logistics-performance-dataset) and place in `data/`)*.
+### 2. Inspect & Clean Dataset
 
-### 5. Inspect the Raw Dataset
+Run data inspection:
 ```powershell
-python -m src.inspect_data
+.\.venv\Scripts\python.exe -m src.inspect_data
 ```
-*Outputs row/column counts, data types, missing records, date distributions, and outlier metrics.*
 
-### 6. Clean Dataset & Generate Processed Artifacts
+Execute the cleaning pipeline to produce `data/processed_shipments.csv`:
 ```powershell
-python -m src.clean_data
+.\.venv\Scripts\python.exe -m src.clean_data
 ```
-*Generates `data/processed_shipments.csv` after filtering inverted dates, missing tracking records, and lost shipments.*
 
-### 7. Train and Evaluate Machine Learning Models
-```powershell
-python -m src.train
-```
-*Trains the Baseline Median model and the RandomForestRegressor pipeline, calculates MAE and RMSE in days and hours, and writes artifacts to `models/`.*
+### 3. Train Model
 
-### 8. Run Automated Test Suite
+Train the median baseline and the Random Forest regression pipeline:
 ```powershell
-python -m pytest -v
+.\.venv\Scripts\python.exe -m src.train
 ```
-*Executes all 18 unit and integration tests across data integrity, model inference, and propagation logic.*
+Artifacts are saved to `models/eta_model.joblib`, `models/evaluation_metrics.json`, and `models/test_predictions.csv`.
 
-### 9. Launch the Streamlit Interactive Dashboard
+### 4. Run Automated Test Suite
+
+Execute the 22 automated unit and integration tests:
 ```powershell
-streamlit run app.py
+.\.venv\Scripts\python.exe -m pytest -q
 ```
-*Opens the executive web dashboard in your default browser at `http://localhost:8501`.*
+
+### 5. Launch the Dashboard
+
+Launch the interactive Streamlit dashboard:
+```powershell
+.\.venv\Scripts\streamlit.exe run app.py
+```
+Open **`http://localhost:8501`** in your browser.
 
 ---
 
-## 📊 Measured Machine Learning Performance
+## Dashboard Sections
 
-Evaluated strictly on a held-out test set of 360 shipments (20% split, `random_state=42`):
-
-| Evaluation Metric | Baseline Predictor (Median) | RandomForestRegressor Pipeline | Performance Improvement |
-| :--- | :---: | :---: | :---: |
-| **Mean Absolute Error (MAE)** | 2.114 days (50.73 hrs) | **2.016 days (48.38 hrs)** | **-2.35 hrs (RF is superior)** |
-| **Root Mean Squared Error (RMSE)** | 3.359 days (80.63 hrs) | **3.105 days (74.53 hrs)** | **-6.10 hrs (RF is superior)** |
-| **Test Set $R^2$ Score** | -0.0886 | **+0.0699** | **+0.1585 gain** |
-
-> **Zero Target Leakage Guarantee**: The model strictly excludes post-event attributes (`Delivery_Date`, `Status`, `Cost`) and the dataset's post-hoc `Transit_Days` column.
+The application provides 5 operational tabs:
+1. **ETA & Delay Estimator**: Select origin warehouse, destination, carrier, distance, and weight to calculate predicted duration, UTC arrival timestamp, and SLA risk tier.
+2. **Disruption Simulator**: Interactive waterfall timeline modeling injected bottlenecks and buffer recovery across four shipment stages.
+3. **Model Evaluation & Residuals**: Parity charts, signed error distributions, and benchmark tables comparing the Random Forest pipeline against the median baseline.
+4. **Data Quality & Audit**: Cleaning audit scorecard showing filtered inversions, handled missing values, and leakage control audits.
+5. **Route Network & Records**: Multiselect filterable table and national corridor volume flow Sankey diagrams.
 
 ---
 
-## ⏱️ Five-Minute Demonstration Outline
+## Known Limitations & Future Improvements
 
-Use this outline during technical evaluation interviews to demonstrate the platform:
-
-| Timestamp | Phase | Screen / Feature | Key Points to Highlight |
-| :--- | :--- | :--- | :--- |
-| **0:00 - 1:00** | **Problem & Data Audit** | `Data Quality & Schema Audit` | Show 2,000 raw vs 1,800 clean records. Highlight discovery of 16 date inversions (-30 days) and explain why Kaggle's `Transit_Days` column was excluded to avoid 100% target leakage. |
-| **1:00 - 2:15** | **Live ETA & Risk Prediction** | `ETA & Delay Studio` | Load a historical sample or input a route (e.g. Miami to San Francisco). Predict ETA in UTC, demonstrate how user-specified target SLA calculates delay, and show the plain-English explanation card with causality disclaimers. |
-| **2:15 - 3:30** | **Delay Propagation Simulator** | `Multi-Stage Propagation Simulator` | Emphasize data provenance (simulated stages clearly labeled). Inject an 18-hour disruption into *Main Transit*, demonstrate how downstream stages shift via single cumulative delay ledger, and prove zero double-counting. |
-| **3:30 - 4:15** | **ML Model Validation** | `Model Evaluation & Residuals` | Review measured MAE/RMSE comparisons against the median baseline. Review actual vs predicted scatter plot and residual normality. |
-| **4:15 - 5:00** | **Route Network & Summary** | `Route Explorer & Historical Archive` | Show interactive Sankey flow diagram of top corridors, query historical shipments by carrier/status, and conclude with the enterprise telematics deployment roadmap. |
+1. **Calendar-Day Granularity**: The source dataset records timestamps at day-level resolution rather than hour/minute timestamps, introducing unavoidable discrete rounding variance.
+2. **Absence of Real-Time Telematics**: Highway conditions, weather storms, and terminal dwell times are unobserved in the historical dataset; integrating ELD/GPS feeds (e.g. Samsara, Geotab) would improve $R^2$.
+3. **Feature Correlation vs. Causation**: Feature importances indicate empirical association in decision tree splits, not direct causal drivers.
 
 ---
 
-## 🛡️ License & Academic Integrity
-Developed as part of the Aiqon AI Internship technical assessment. Primary data source courtesy of Shahriar Kabir via Kaggle under Open Database License. All simulations and machine learning pipelines are fully reproducible.
+## License
+
+This project is licensed under the [MIT License](LICENSE). Sourced dataset remains under the attribution terms of its original Kaggle authors.

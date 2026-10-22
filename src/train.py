@@ -1,5 +1,5 @@
 """
-Model training and evaluation pipeline for Aiqon SmartShip AI.
+Model training and evaluation pipeline for SmartShip.
 Trains Baseline and RandomForestRegressor models, computes MAE and RMSE,
 and serializes artifacts to models/eta_model.joblib and models/evaluation_metrics.json.
 """
@@ -37,9 +37,7 @@ def train_and_evaluate(
     else:
         df = pd.read_csv(csv_file)
 
-    print("=" * 65)
-    print("AIQON SMARTSHIP AI: MODEL TRAINING & EVALUATION")
-    print("=" * 65)
+    print("SmartShip: Training and evaluating regression models...")
 
     X, y = prepare_training_data(df)
     total_valid = len(X)
@@ -113,7 +111,11 @@ def train_and_evaluate(
     print(f"\nSaved trained pipeline to: {out_model.resolve()}")
 
     # Save Test Predictions for Dashboard Visualization
-    residuals_days = y_test - rf_preds_days
+    # Signed error definition: prediction_error = (predicted - actual)
+    # Negative values mean underprediction; positive values mean overprediction.
+    prediction_error_days = rf_preds_days - y_test.values
+    prediction_error_hours = prediction_error_days * 24.0
+
     test_eval_df = X_test.copy()
     test_eval_df["actual_days"] = y_test.values
     test_eval_df["actual_hours"] = y_test.values * 24.0
@@ -121,8 +123,10 @@ def train_and_evaluate(
     test_eval_df["predicted_hours"] = rf_preds_hours
     test_eval_df["baseline_days"] = baseline_preds
     test_eval_df["baseline_hours"] = baseline_preds * 24.0
-    test_eval_df["residual_days"] = residuals_days.values
-    test_eval_df["residual_hours"] = residuals_days.values * 24.0
+    test_eval_df["prediction_error_days"] = prediction_error_days
+    test_eval_df["prediction_error_hours"] = prediction_error_hours
+    test_eval_df["residual_days"] = prediction_error_days
+    test_eval_df["residual_hours"] = prediction_error_hours
 
     out_preds = Path(test_predictions_path)
     out_preds.parent.mkdir(parents=True, exist_ok=True)

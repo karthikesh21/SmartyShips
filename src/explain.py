@@ -1,15 +1,14 @@
 """
-Explainability and Delay Risk Categorization module for Aiqon SmartShip AI.
-Categorizes schedule-relative delay into documented risk tiers and provides
-plain-English interpretations of contributing factors with statistical disclaimers.
+Explainability and Delay Risk Categorization module for SmartShip.
+Categorizes schedule-relative delay into operational risk tiers and provides
+concise dispatch summaries of contributing route factors.
 """
 
 from typing import Dict, Any, List, Optional
 import numpy as np
 import pandas as pd
-from sklearn.inspection import permutation_importance
 
-# Documented application-defined risk thresholds in hours
+# Default operational risk thresholds in hours relative to target delivery
 DEFAULT_THRESHOLDS = {
     "on_time_max": 0.0,
     "low_risk_max": 12.0,
@@ -29,8 +28,7 @@ def categorize_delay_risk(
     thresholds: Optional[Dict[str, float]] = None
 ) -> Dict[str, Any]:
     """
-    Categorizes estimated delay into documented risk tiers.
-    Thresholds are application-defined, not official logistics standards.
+    Categorizes estimated delay into operational risk tiers based on configured thresholds.
     """
     if thresholds is None:
         thresholds = DEFAULT_THRESHOLDS
@@ -50,19 +48,19 @@ def categorize_delay_risk(
 
     if delay <= t_on_time:
         category = "On Time / Early"
-        desc = f"Predicted arrival is {abs(delay):.1f} hours ahead of or on the promised schedule."
+        desc = f"Arrival is {abs(delay):.1f} hours ahead of or on the promised schedule."
         rule = f"delay <= {t_on_time} hrs"
     elif delay <= t_low:
         category = "Low Risk"
-        desc = f"Minor expected delay of {delay:.1f} hours within typical operational buffer tolerance."
+        desc = f"Minor expected delay of {delay:.1f} hours, within standard operational buffer."
         rule = f"{t_on_time} < delay <= {t_low} hrs"
     elif delay <= t_mod:
         category = "Moderate Risk"
-        desc = f"Moderate delay of {delay:.1f} hours that exceeds standard operational buffers."
+        desc = f"Expected delay of {delay:.1f} hours exceeds routine buffer tolerances."
         rule = f"{t_low} < delay <= {t_mod} hrs"
     else:
         category = "High Risk"
-        desc = f"Severe delay of {delay:.1f} hours (> {t_mod}h). Substantial risk of SLA breach."
+        desc = f"Critical delay of {delay:.1f} hours (> {t_mod}h). High probability of SLA breach."
         rule = f"delay > {t_mod} hrs"
 
     return {
@@ -75,8 +73,8 @@ def categorize_delay_risk(
 
 def get_feature_importances(pipeline) -> pd.DataFrame:
     """
-    Extracts and aggregates feature importance from the trained Scikit-learn Pipeline.
-    Aggregates one-hot encoded sub-features back into primary operational dimensions.
+    Extracts and aggregates feature importance from the fitted Scikit-learn Pipeline.
+    Rolls up one-hot encoded dummy columns into parent operational dimensions.
     """
     preprocessor = pipeline.named_steps["preprocessor"]
     model = pipeline.named_steps["regressor"]
@@ -88,7 +86,7 @@ def get_feature_importances(pipeline) -> pd.DataFrame:
 
     raw_importances = model.feature_importances_
 
-    # Map each transformed feature to parent operational feature
+    # Aggregate back to parent features
     parent_map = {}
     for name, imp in zip(all_feature_names, raw_importances):
         if name.startswith("Origin_Warehouse"):
@@ -102,7 +100,7 @@ def get_feature_importances(pipeline) -> pd.DataFrame:
         elif name == "Weight_kg":
             parent = "Shipment Weight (kg)"
         elif name == "Shipment_Month":
-            parent = "Departure Month (Seasonality)"
+            parent = "Departure Month"
         elif name == "Shipment_DayOfWeek":
             parent = "Day of Week"
         else:
@@ -113,7 +111,7 @@ def get_feature_importances(pipeline) -> pd.DataFrame:
         {"Feature": k, "Importance": v} for k, v in parent_map.items()
     ]).sort_values(by="Importance", ascending=False).reset_index(drop=True)
 
-    # Normalize to 100%
+    # Normalize percentage
     total = imp_df["Importance"].sum()
     if total > 0:
         imp_df["Importance_Pct"] = (imp_df["Importance"] / total) * 100
@@ -128,8 +126,7 @@ def generate_plain_english_explanation(
     importance_df: Optional[pd.DataFrame] = None
 ) -> str:
     """
-    Generates an executive, plain-English summary of the ETA and risk prediction.
-    Explicitly clarifies that feature importance indicates statistical association, not causation.
+    Generates a concise operational dispatch summary of the ETA and risk prediction.
     """
     origin = prediction_result.get("origin", "Origin")
     dest = prediction_result.get("destination", "Destination")
@@ -144,18 +141,17 @@ def generate_plain_english_explanation(
     top_feature = importance_df.iloc[0]["Feature"] if importance_df is not None and not importance_df.empty else "Transit Distance"
 
     lines = []
-    lines.append(f"**Shipment Route Overview:** Dispatch from **{origin}** to **{dest}** covering **{dist:,.0f} miles** via **{carrier}** with a cargo weight of **{weight:.1f} kg**.")
-    lines.append(f"**Duration Forecast:** The AI model estimates an operational delivery transit of **{duration_days:.1f} days ({duration_hours:.1f} hours)**.")
+    lines.append(f"**Route**: {origin} to {dest} ({dist:,.0f} miles via {carrier}, cargo weight {weight:.1f} kg).")
+    lines.append(f"**Estimated Transit**: **{duration_days:.1f} days** ({duration_hours:.1f} hours).")
 
     if delay_hours is not None:
         if delay_hours <= 0:
-            lines.append(f"**Schedule Assessment ({category}):** Expected delivery aligns comfortably within the schedule with a **{abs(delay_hours):.1f}-hour buffer** prior to requested delivery.")
+            lines.append(f"**Schedule Status**: **{category}** — delivery expected with a **{abs(delay_hours):.1f}h buffer** before the target SLA.")
         else:
-            lines.append(f"**Schedule Assessment ({category}):** Expected delivery breaches the target deadline by **{delay_hours:.1f} hours**, classified as **{category}** based on application thresholds.")
+            lines.append(f"**Schedule Status**: **{category}** — delivery projected **{delay_hours:.1f} hours past** the target SLA.")
     else:
-        lines.append(f"**Schedule Assessment:** No expected arrival deadline specified. Duration prediction reflects baseline routing.")
+        lines.append("**Schedule Status**: No delivery deadline specified; estimate reflects nominal transit time.")
 
-    lines.append(f"**Primary Predictive Driver:** Across historical performance patterns, **{top_feature}** exerts the strongest statistical correlation with transit duration variance.")
-    lines.append("\n*Methodological Note: Feature importance reflects historical statistical association within the trained Random Forest model and does not establish mechanical causality.*")
+    lines.append(f"**Primary Driver**: **{top_feature}** has the strongest statistical weighting on this corridor.")
 
     return "\n\n".join(lines)
